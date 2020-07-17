@@ -4,32 +4,28 @@ import org.apache.spark._
 import org.apache.spark.SparkContext._
 import org.apache.log4j._
 
-/** Count up how many of each star rating exists in the MovieLens 100K data set. */
-object RatingsCounter {
-
+object RatingsCounter extends MySparkTask[(Int, Int)] {
   /** Our main function where the action happens */
-  def main(args: Array[String]) {
+  override def run(sc: SparkContext) = {
 
-    // Set the log level to only print errors
-    Logger.getLogger("org").setLevel(Level.ERROR)
+    val lines = sc.textFile("fakefriends.csv")
+    val rdd = lines.map(parseLine)
+    case class AgeData(friends: Int, counter: Int)
 
-    // Create a SparkContext using every core of the local machine, named RatingsCounter
-    val sc = new SparkContext("local[*]", "RatingsCounter")
+    rdd.mapValues(x => AgeData(x, 1))
+      .reduceByKey((a, b) => AgeData(a.friends + b.friends, a.counter + b.counter))
+      .mapValues(x => x.friends / x.counter)
+      .collect()
+      .sortBy(_._1)
+      .foreach(x => println(x))
 
-    // Load up each line of the ratings data into an RDD
-    val lines = sc.textFile("u.data")
-
-    // Convert each line to a string, split it out by tabs, and extract the third field.
-    // (The file format is userID, movieID, rating, timestamp)
-    val ratings = lines.map(x => x.split("\t")(2))
-
-    // Count up how many times each value (rating) occurs
-    val results = ratings.countByValue()
-
-    // Sort the resulting map of (rating, count) tuples
-    val sortedResults = results.toSeq.sortBy(_._1)
-
-    // Print each result on its own line.
-    sortedResults.foreach(println)
+    rdd.collect()
   }
+
+  private def parseLine(line: String) = {
+    val cells = line.split(',')
+    (cells(2).toInt, cells(3).toInt)
+  }
+
+  override val appName = "RatingsCounter"
 }
